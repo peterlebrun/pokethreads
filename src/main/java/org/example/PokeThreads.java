@@ -10,6 +10,7 @@ import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,8 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 
 
 // Get list of pokemon from pokemon API
@@ -70,12 +73,11 @@ public class PokeThreads {
 
         PokemonList pokemonList = objectMapper.readValue(res.body().toString(), PokemonList.class);
 
-        pokemonList.getResults()
+        List<Callable<Integer>> pokeCallables = pokemonList.getResults()
                 .stream()
-                .forEach(pokemon -> {
+                .map(pokemon -> {
                     String name = pokemon.getName();
-                    executorService.submit(() -> {
-                        System.out.println(name + ": " + Thread.currentThread().getId());
+                    Callable<Integer> callable = () -> {
                         try {
                             HttpRequest cReq = HttpRequest.newBuilder()
                                     .uri(new URI(getDetailUrl(name)))
@@ -88,11 +90,27 @@ public class PokeThreads {
                         } catch (Exception e) {
                             // NOT THE WAY TO DO THIS
                         }
-                    });
-                });
-        System.out.println(pokeDetails);
-        Thread.sleep(20000);
-        System.out.println(pokeDetails);
+                        // return random int, pretend it's a weight
+                        return (int)Thread.currentThread().getId();
+                    };
+                    return callable;
+                })
+                .collect(Collectors.toList());
+
+        List<Integer> weights = executorService.invokeAll((pokeCallables))
+                .stream()
+                .map(f -> {
+                    try {
+                        return f.get();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                    return null;
+                })
+                .sorted(Comparator.reverseOrder())
+                .collect(Collectors.toList());
+
+        System.out.println(weights);
 
         executorService.shutdown();
     }
